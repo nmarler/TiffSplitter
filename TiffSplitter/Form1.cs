@@ -63,16 +63,22 @@ namespace TiffSplitter
             object sender, 
             System.EventArgs e )
         {
+            // UI
+            txtFolder.Enabled = false;
+            btnBrowse.Enabled = false;
+            btnSplit.Enabled = false;
+            Application.DoEvents();
+
             // error check
             if( string.IsNullOrEmpty( txtFolder?.Text ) ) {
                 DisplayError( "Must specify folder to analyze" );
-                return;
+                goto Done;
             }
 
             // error check
             if( !Directory.Exists( txtFolder.Text ) ) {
                 DisplayError( "Must specify a folder that already exists" );
-                return;
+                goto Done;
             }
 
             // process files in the directory
@@ -83,23 +89,38 @@ namespace TiffSplitter
                 MessageBox.Show( "No files were split", "Result", MessageBoxButtons.OK, MessageBoxIcon.Warning );
             else
                 MessageBox.Show( $"{splitCount} file{( splitCount == 1 ? " was" : "s were" )} split", "Result", MessageBoxButtons.OK, MessageBoxIcon.Information );
+
+            // done
+        Done:
+            txtFolder.Enabled = true;
+            btnBrowse.Enabled = true;
+            btnSplit.Enabled = true;
+            Application.DoEvents();
         }
 
 
-        private static bool Split(
+        private bool Split(
             string file )
         {
             // verify parameter
-            if( string.IsNullOrEmpty(file))
+            if( string.IsNullOrEmpty( file ) )
                 return false;
+
+            UpdateStatus( $"Processing {Path.GetFileName( file )}..." );
 
             // verify parameter represents a file
             if( !File.Exists( file ) )
+            {
+                UpdateStatus( $"Processing {Path.GetFileName( file )} Failed (Bad Param)." );
                 return false;
+            }
 
             // verify parameter is a tiff file (well, at least that it has proper extension)
             if( !file.ToLower().EndsWith( ".tif" ) && !file.ToLower().EndsWith( ".tiff" ) )
+            {
+                UpdateStatus( $"Ignore {Path.GetFileName( file )}  - not a TIFF." );
                 return false;
+            }
 
             // create an image object to work with
             using( Image tiffImage = Image.FromFile( file ) )
@@ -110,7 +131,10 @@ namespace TiffSplitter
 
                 // is there anything to Split?
                 if( 2 > numPages )
+                {
+                    UpdateStatus( $"Ignore {Path.GetFileName( file )} - does not contain multiple images." );
                     return false;
+                }
 
                 // get tiff codec info
                 ImageCodecInfo tiffCodecInfo =
@@ -118,15 +142,21 @@ namespace TiffSplitter
 
                 // error check
                 if( null == tiffCodecInfo ) {
-                    DisplayError( "Internal Error - could not obtain TIFF codec" );
+                    string s = "Internal Error - could not obtain TIFF codec";
+                    UpdateStatus( $"Processing {Path.GetFileName( file )} failed - {s}." );
+                    DisplayError( s );
                     return false;
                 }
 
                 // time to Split
                 foreach( var guid in tiffImage.FrameDimensionsList ) 
                 {
+                    UpdateStatus( $"Splitting {Path.GetFileName( file )}..." );
+
                     for( int index = 0; index < numPages; index++ )
                     {
+                        UpdateStatus( $"Splitting {Path.GetFileName( file )} ({index})..." );
+
                         FrameDimension currentFrame = new FrameDimension( guid );
                         tiffImage.SelectActiveFrame( currentFrame, index );
                         tiffImage.Save( MakeIndexedFileName(file,index), tiffCodecInfo, null );
@@ -135,9 +165,11 @@ namespace TiffSplitter
             }
 
             // move the original file to subfolder
+            UpdateStatus( $"Moving {Path.GetFileName( file )}..." );
             File.Move(file, MakeSubfolderFileName(file) );
 
             // success
+            UpdateStatus( $"Successfully processed {Path.GetFileName( file )}" );
             return true;
         }
 
@@ -149,9 +181,15 @@ namespace TiffSplitter
         }
 
 
-        private static string GetDateTimeStamp()
+        private void UpdateStatus(string msg)
         {
-            return DateTime.Now.ToString( "yyyyMMdd-HHmmss.fff" );
+            // error check
+            if( null == toolStripStatusLabel )
+                return;
+
+            // update
+            toolStripStatusLabel.Text = msg;
+            Application.DoEvents();
         }
 
 
